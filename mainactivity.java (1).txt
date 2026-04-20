@@ -1,0 +1,104 @@
+package com.example.sd_card;
+
+import android.content.Intent;
+import android.os.Bundle;
+import android.view.View;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import com.example.sd_card.adapter.NoteAdapter;
+import com.example.sd_card.databinding.ActivityMainBinding;
+import com.example.sd_card.db.NoteEntity;
+import com.example.sd_card.viewmodel.NoteViewModel;
+import com.google.android.material.snackbar.Snackbar;
+
+public class MainActivity extends AppCompatActivity implements NoteAdapter.OnNoteActionsListener {
+
+    private ActivityMainBinding binding;
+    private NoteViewModel noteViewModel;
+    private NoteAdapter adapter;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        binding = ActivityMainBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
+
+        setupRecyclerView();
+
+        noteViewModel = new ViewModelProvider(this).get(NoteViewModel.class);
+        
+        // Observe filtered notes (handles both all notes and search results)
+        noteViewModel.getFilteredNotes().observe(this, notes -> {
+            adapter.submitList(notes);
+            binding.emptyState.setVisibility(notes.isEmpty() ? View.VISIBLE : View.GONE);
+        });
+
+        binding.fabAdd.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, AddEditNoteActivity.class);
+            startActivity(intent);
+        });
+
+        // Setup Material 3 Search
+        binding.searchView.getEditText().addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                noteViewModel.setSearchQuery(s.toString());
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        binding.searchView.getEditText().setOnEditorActionListener((v, actionId, event) -> {
+            binding.searchBar.setText(binding.searchView.getText());
+            binding.searchView.hide();
+            return false;
+        });
+    }
+
+    private void setupRecyclerView() {
+        adapter = new NoteAdapter(this);
+        binding.rvNotes.setLayoutManager(new LinearLayoutManager(this));
+        binding.rvNotes.setAdapter(adapter);
+    }
+
+    @Override
+    public void onNoteClick(NoteEntity note) {
+        // Show note details or edit
+        openEditNote(note);
+    }
+
+    @Override
+    public void onEditClick(NoteEntity note) {
+        openEditNote(note);
+    }
+
+    private void openEditNote(NoteEntity note) {
+        Intent intent = new Intent(this, AddEditNoteActivity.class);
+        intent.putExtra(AddEditNoteActivity.EXTRA_ID, note.getId());
+        intent.putExtra(AddEditNoteActivity.EXTRA_TITLE, note.getTitle());
+        intent.putExtra(AddEditNoteActivity.EXTRA_CONTENT, note.getContent());
+        intent.putExtra(AddEditNoteActivity.EXTRA_AUTHOR, note.getAuthor());
+        startActivity(intent);
+    }
+
+    @Override
+    public void onDeleteClick(NoteEntity note) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete Note")
+                .setMessage("Delete this note permanently?")
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    noteViewModel.delete(note);
+                    Snackbar.make(binding.getRoot(), "Note deleted", Snackbar.LENGTH_LONG)
+                            .setAction("Undo", v -> noteViewModel.insert(note))
+                            .show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+}
